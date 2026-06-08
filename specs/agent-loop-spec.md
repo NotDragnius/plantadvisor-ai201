@@ -122,7 +122,13 @@ for tool_call in assistant_message.tool_calls:
 *The loop should stop when: (a) the LLM returns a response with no tool calls, OR (b) the MAX_TOOL_ROUNDS limit is reached. Describe how you will detect each condition and what you will return in each case.*
 
 ```
-[your answer here]
+Condition (a) - No Tool Calls:
+- Detection: Check `not assistant_message.tool_calls` after each LLM call.
+- What to return: The text content of this message (`assistant_message.content`).
+
+Condition (b) - MAX_TOOL_ROUNDS reached:
+- Detection: Maintain a counter `rounds` incremented each time we process a round of tool calls. Before invoking tool execution, if `rounds >= MAX_TOOL_ROUNDS`, we break out of the loop.
+- What to return: If the last message contains text content, we return `assistant_message.content`. If it is None or empty (because the LLM only returned tool_calls), we return a fallback message: "I apologize, I reached my research limit for this request. Please try asking again or simplifying your question."
 ```
 
 ---
@@ -132,32 +138,32 @@ for tool_call in assistant_message.tool_calls:
 *Once the loop exits because there are no more tool calls, how do you extract the text content from the response object? What field holds the string you should return?*
 
 ```
-[your answer here]
+The assistant message is obtained via `assistant_message = response.choices[0].message`.
+The text content is stored in the `content` field of this message: `assistant_message.content`.
+We should strip it and check that it is a non-empty string.
 ```
 
 ---
 
 ## Implementation Notes
 
-*Fill this in after implementing and testing.*
-
 **Trace of a working agent turn (what tools were called and in what order):**
 
 ```
-Query: "How should I care for my calathea?"
-Round 1 tool call: [tool name, args]
-Round 2 tool call: [tool name, args] (if any)
-Final response: [brief description]
+Query: "How often should I water my snake plant in winter?"
+Round 1 tool call: lookup_plant({'plant_name': 'snake plant'})
+Round 2 tool call: get_seasonal_conditions({'season': 'winter'})
+Final response: Recommends watering the snake plant once a month or less in winter, citing both the plant's high drought tolerance and winter seasonal care adjustments.
 ```
 
 **What happens when you ask about a plant that isn't in the database?**
 
 ```
-[describe the behavior you observed]
+The agent calls lookup_plant() and receives a 'not found' response listing available plants. Based on the instruction in the message, the agent politely tells the user that the plant is not in its database, offers general care tips using its general LLM knowledge (e.g. noting that string of pearls is a succulent), and asks the user for details about the plant's environment.
 ```
 
 **One thing about the tool call API that surprised you:**
 
 ```
-[your answer here]
+The API returns arguments as a raw JSON string rather than a parsed dictionary. Additionally, if the LLM decides to omit optional parameters, it may pass 'null' or empty arguments, which can cause JSON decoding to return `None` rather than an empty dictionary, requiring defensive code like `if not isinstance(tool_args, dict): tool_args = {}` to avoid errors.
 ```

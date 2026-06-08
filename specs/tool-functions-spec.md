@@ -69,8 +69,21 @@ likely match for clean user input. Aliases are the broadest net, so they go last
 
 *Aliases are stored as a list of strings. How will you check if the normalized input matches any alias in the list? Write your approach in pseudocode or plain English.*
 
+```python
+# Check if the normalized user input matches any of the lowercase aliases:
+any(normalized == alias.lower() for alias in plant["aliases"])
 ```
-[your answer here]
+
+**Scalability optimization:**
+To make lookups $O(1)$ fast for thousands of plants, we would build a mapping/index dictionary at startup mapping normalized search terms (keys, display names, and aliases) to the plant dictionary:
+```python
+_lookup_index = {}
+for key, plant in _plant_db.items():
+    _lookup_index[key.lower()] = plant
+    _lookup_index[key.lower().replace("_", " ")] = plant
+    _lookup_index[plant["display_name"].lower()] = plant
+    for alias in plant["aliases"]:
+        _lookup_index[alias.lower()] = plant
 ```
 
 ---
@@ -80,7 +93,7 @@ likely match for clean user input. Aliases are the broadest net, so they go last
 *When a plant isn't found, the agent will read your message and use it to decide what to tell the user. Write the exact string you'll return — make it useful to the agent, not just to a human reading logs.*
 
 ```
-[your answer here]
+"Plant '{normalized}' was not found in the database. The available plants are: {available_plants}. Inform the user that this plant is not in our database, and ask them to describe the plant's care requirements or environment (light, watering frequency) so you can offer general care advice."
 ```
 
 ---
@@ -91,17 +104,17 @@ likely match for clean user input. Aliases are the broadest net, so they go last
 
 **Test: does `"devil's ivy"` return the pothos entry?**
 ```
-[yes / no — if no, describe what happened]
+yes
 ```
 
 **Test: does `"SNAKE PLANT"` return the snake plant entry?**
 ```
-[yes / no — if no, describe what happened]
+yes
 ```
 
 **One edge case you discovered while implementing:**
 ```
-[your answer here]
+Users might write names with spaces instead of underscores (e.g., "snake plant" instead of "snake_plant"). To resolve this, the code converts spaces to underscores and checks if the resulting string matches a database key directly.
 ```
 
 ---
@@ -183,12 +196,12 @@ The full season dict from `_season_data`, plus a `detected_season` boolean. Exam
 
 **Test: does calling with `season=None` return the correct season for the current month?**
 ```
-Current month: [month]
-Expected season: [season]
-Returned season: [season]
+Current month: June
+Expected season: summer
+Returned season: summer
 ```
 
 **Test: does calling with `season="winter"` return winter data regardless of the current month?**
 ```
-[yes / no]
+yes
 ```

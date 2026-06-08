@@ -24,11 +24,6 @@ def lookup_plant(plant_name: str) -> dict:
     """
     Search the plant database for a plant by name and return its care information.
 
-    TODO — Milestone 1:
-
-    Right now this always returns a "not found" response. Your job is to implement
-    the search logic so it can actually find plants.
-
     The plant database (_plant_db) is a dict where keys are lowercase slugs like
     "pothos", "snake_plant", "fiddle_leaf_fig". Each plant also has a "display_name"
     field and an "aliases" list with common alternate names.
@@ -45,17 +40,39 @@ def lookup_plant(plant_name: str) -> dict:
 
     Return format when not found:
       {"found": False, "name": <original input>, "message": <helpful string>}
-
-    The message in the not-found case matters — the agent will use it to decide
-    what to tell the user. Your spec has a dedicated field for this — think about
-    what information would actually be helpful to the agent.
-
-    Before writing code, complete the lookup_plant section of specs/tool-functions-spec.md.
     """
+    normalized = plant_name.strip().lower()
+
+    # 1. Direct key match (handling underscores/spaces)
+    for key, plant in _plant_db.items():
+        key_norm = key.lower()
+        if (
+            normalized == key_norm
+            or normalized.replace(" ", "_") == key_norm
+            or normalized.replace("_", " ") == key_norm
+        ):
+            return {"found": True, "plant": plant}
+
+    # 2. Display name match
+    for key, plant in _plant_db.items():
+        if plant["display_name"].lower() == normalized:
+            return {"found": True, "plant": plant}
+
+    # 3. Alias match
+    for key, plant in _plant_db.items():
+        if any(normalized == alias.lower() for alias in plant.get("aliases", [])):
+            return {"found": True, "plant": plant}
+
+    # 4. If not found, prepare a helpful not-found message listing available plants
+    available_plants = ", ".join(sorted(p["display_name"] for p in _plant_db.values()))
     return {
         "found": False,
         "name": plant_name,
-        "message": "Plant lookup not yet implemented. Complete Milestone 1.",
+        "message": (
+            f"Plant '{plant_name}' was not found in the database. The available plants are: {available_plants}. "
+            "Inform the user that this plant is not in our database, and ask them to describe the plant's care "
+            "requirements or environment (light, watering frequency) so you can offer general care advice."
+        ),
     }
 
 

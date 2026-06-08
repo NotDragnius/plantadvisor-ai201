@@ -85,14 +85,14 @@ SYSTEM_PROMPT = (
 
 def dispatch_tool(tool_name: str, tool_args: dict) -> str:
     """Route a tool call to the correct function and return the result as a JSON string."""
-    print(f"  → Tool call: {tool_name}({tool_args})")
+    print(f"  -> Tool call: {tool_name}({tool_args})")
     if tool_name == "lookup_plant":
         result = lookup_plant(tool_args["plant_name"])
     elif tool_name == "get_seasonal_conditions":
         result = get_seasonal_conditions(tool_args.get("season"))
     else:
         result = {"error": f"Unknown tool: {tool_name}"}
-    print(f"  ← Result: {json.dumps(result)[:120]}{'...' if len(json.dumps(result)) > 120 else ''}")
+    print(f"  <- Result: {json.dumps(result)[:120]}{'...' if len(json.dumps(result)) > 120 else ''}")
     return json.dumps(result)
 
 
@@ -104,13 +104,7 @@ def run_agent(user_message: str, history: list) -> str:
     """
     Run the plant care agent for one user turn and return its response.
 
-    TODO — Milestone 2:
-
-    The agent loop follows a specific pattern that you'll implement here. Read
-    specs/agent-loop-spec.md carefully before writing any code — understand the
-    full loop before implementing any part of it.
-
-    The loop works like this:
+    The agent loop follows a specific pattern that is implemented here:
       1. Build a messages list: system prompt + conversation history + new user message
       2. Call the LLM with messages and TOOL_DEFINITIONS
       3. If the response contains tool_calls:
@@ -119,13 +113,96 @@ def run_agent(user_message: str, history: list) -> str:
            c. Call the LLM again with the updated messages
            d. Repeat until no more tool_calls (or MAX_TOOL_ROUNDS is reached)
       4. Return the final text response
-
-    Key details to get right:
-      - The assistant message must be appended BEFORE tool results
-      - Tool result messages use role="tool" with a tool_call_id field
-      - Append the assistant's message object directly (not just its content)
-      - The history format from Gradio: list of [user_message, assistant_message] pairs
-
-    Before writing code, complete specs/agent-loop-spec.md.
     """
-    return "🌱 Agent not yet implemented. Complete Milestone 2 to activate the Plant Advisor."
+    print(f"\n--- Agent Turn ---")
+    print(f"User message: {user_message}")
+
+    # 1. Build messages list starting with System Prompt
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+
+    # Replay conversation history in the OpenAI messages format
+    for item in history:
+        if isinstance(item, dict):
+            # Gradio 6.x format: list of {"role": "...", "content": "..."}
+            messages.append({"role": item["role"], "content": item["content"]})
+        elif hasattr(item, "role") and hasattr(item, "content"):
+            # Gradio ChatMessage object
+            messages.append({"role": item.role, "content": item.content})
+        elif isinstance(item, (list, tuple)) and len(item) == 2:
+            # Gradio 4.x/5.x format: [user_msg, assistant_msg]
+            user_msg, assistant_msg = item
+            messages.append({"role": "user", "content": user_msg})
+            if assistant_msg:
+                messages.append({"role": "assistant", "content": assistant_msg})
+
+    # Append current user message
+    messages.append({"role": "user", "content": user_message})
+
+    # 2. Tool call loop
+    rounds = 0
+    while True:
+        try:
+            response = _client.chat.completions.create(
+                model=LLM_MODEL,
+                messages=messages,
+                tools=TOOL_DEFINITIONS,
+                tool_choice="auto",
+            )
+        except Exception as e:
+            print(f"Error calling Groq LLM API: {e}")
+            return (
+                "I'm sorry, I encountered an issue connecting to the AI service. "
+                "Please make sure your API key is correct and try again."
+            )
+
+        if not response.choices:
+            return "I apologize, I didn't receive a response from the AI service. Please try again."
+
+        assistant_message = response.choices[0].message
+
+        # Check if the model has a final text response (no tool calls)
+        if not assistant_message.tool_calls:
+            if assistant_message.content:
+                return assistant_message.content
+            return "I'm sorry, I couldn't generate a text response. Please try asking again."
+
+        # If the model wants to call tools, check safety limits
+        if rounds >= MAX_TOOL_ROUNDS:
+            print(f"Warning: reached MAX_TOOL_ROUNDS ({MAX_TOOL_ROUNDS}). Terminating loop.")
+            if assistant_message.content:
+                return assistant_message.content
+            return (
+                "I apologize, I reached my research limit for this request. "
+                "Please try asking again or simplifying your question."
+            )
+
+        rounds += 1
+
+        # We must append the assistant message to the history *before* tool results.
+        messages.append(assistant_message)
+
+        # Execute all requested tool calls
+        for tool_call in assistant_message.tool_calls:
+            tool_name = tool_call.function.name
+            tool_id = tool_call.id
+
+            try:
+                tool_args = json.loads(tool_call.function.arguments)
+                if not isinstance(tool_args, dict):
+                    tool_args = {}
+            except Exception as e:
+                print(f"Error parsing tool arguments: {e}")
+                tool_args = {}
+
+            try:
+                tool_result = dispatch_tool(tool_name, tool_args)
+            except Exception as e:
+                print(f"Error running tool {tool_name}: {e}")
+                tool_result = json.dumps({"error": f"Failed to execute tool: {e}"})
+
+            # Append the tool result to the conversation
+            messages.append({
+                "role": "tool",
+                "tool_call_id": tool_id,
+                "content": tool_result,
+            })
